@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter  -->
+<robot
+  name="fingerurdf">
+  <link
+    name="gelsight_finger">
+    <inertial>
+      <origin
+        xyz="-0.00180776621722935 0.00177993937314142 0.00831417863297659"
+        rpy="0 0 0" />
+      <mass
+        value="0.00284210961666773" />
+      <inertia
+        ixx="2.24366515366732E-06"
+        ixy="-2.67298502840701E-06"
+        ixz="-2.95697297159703E-06"
+        iyy="8.69004783487463E-06"
+        iyz="-1.06731855123785E-06"
+        izz="8.52480650362248E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../../../../../../../assets/tacsl/mesh/fingertip/finger.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../../../../../../../assets/tacsl/mesh/fingertip/finger.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+
+  <link name="camera_link"/>
+
+  <joint
+    name="tactile_camera_joint"
+    type="fixed">
+    <origin
+      xyz="-0.0036365 0 0.0067726"
+      rpy="-0.00019517 -0.95481 0.0001593" />
+    <parent
+      link="gelsight_finger" />
+    <child
+      link="camera_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+
+
+  <link
+    name="elastomer">
+    <inertial>
+      <origin
+        xyz="0.0010264 5.1036E-07 -0.0033256"
+        rpy="0 0 0" />
+      <mass
+        value="0.00092058" />
+      <inertia
+        ixx="1.1753E-08"
+        ixy="-9.9846E-13"
+        ixz="1.3367E-10"
+        iyy="2.7055E-08"
+        iyz="-3.0738E-12"
+        izz="3.5968E-08" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../../../../../../../assets/tacsl/mesh/fingertip/elastomer.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../../../../../../../assets/tacsl/mesh/fingertip/elastomer.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+
+  <joint
+    name="elastomer_joint"
+    type="fixed">
+    <origin
+      xyz="-0.016231 0 0.01529"
+      rpy="-0.00010658 -0.37247 3.8784E-05" />
+    <parent
+      link="gelsight_finger" />
+    <child
+      link="elastomer" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+
+
+  <link name="elastomer_tip"/>
+
+  <joint
+    name="elastomer_tip_joint"
+    type="fixed">
+    <origin
+      xyz="-0.01623 0 0.01529"
+      rpy="-0.00010658 -0.37247 3.8784E-05" />
+    <parent
+      link="gelsight_finger" />
+    <child
+      link="elastomer_tip" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>
