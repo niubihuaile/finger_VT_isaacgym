@@ -427,9 +427,8 @@ class TactileFieldSensor(TactileBase):
                                                  self.body_pos[:, elastomer_tip_link_handle])
         elastomer_to_tip_link_quat, elastomer_to_tip_link_pos = elastomer_to_tip_link_trans
         return elastomer_to_tip_link_quat, elastomer_to_tip_link_pos
-
     def generate_tactile_points(self, elastomer_parent_urdf_path, elastomer_link_name, elastomer_tip_link_name,
-                                elastomer_actor_name, num_divs=[20, 25], margin=0.0015, visualize=False):
+                                elastomer_actor_name, num_divs=[20, 25], margin=0.002, visualize=True):
         """
         Generate tactile points on the elastomer.
 
@@ -438,7 +437,7 @@ class TactileFieldSensor(TactileBase):
             elastomer_link_name (str): Name of the elastomer link.
             elastomer_tip_link_name (str): Name of the elastomer tip link.
             elastomer_actor_name (str): Name of the elastomer actor.
-            num_divs (list): Number of divisions for the tactile points.
+            num_divs (list): Number of divisions for the tactile points (rows, cols).
             margin (float): Margin for the tactile points.
             visualize (bool): Whether to visualize the points.
 
@@ -448,47 +447,57 @@ class TactileFieldSensor(TactileBase):
         robot = URDF.load(elastomer_parent_urdf_path)
         mesh = robot.link_map[elastomer_link_name].visuals[0].geometry.mesh.meshes[0]
 
-        # generate grid on elastomer
-        elastomer_dims = np.diff(mesh.bounds, axis=0).squeeze()
-        slim_axis = np.argmin(elastomer_dims)   # determine flat axis of elastomer
+        # Generate grid on elastomer
+        elastomer_dims = np.diff(mesh.bounds, axis=0).squeeze()  # Get dimensions of the elastomer
+        slim_axis = np.argmin(elastomer_dims)  # Determine the thinnest axis (flat axis)
         _, elastomer_to_tip_link_pos = self.get_elastomer_to_tip_transform(
             actor_name=elastomer_actor_name,
             elastomer_link_name=elastomer_link_name,
             elastomer_tip_link_name=elastomer_tip_link_name)
 
-        # determine gap between adjacent tactile points
+        # Determine the two main axes (long and short axes)
         axis_idxs = list(range(3))
-        axis_idxs.remove(slim_axis)     # remove slim idx
-        div_sz = (elastomer_dims[axis_idxs] - margin * 2.) / (np.array(num_divs) + 1)
-        tactile_points_dx = min(div_sz)
+        axis_idxs.remove(slim_axis)  # Remove the slim axis
+        long_axis, short_axis = axis_idxs  # Identify the long and short axes
 
-        # sample points on the flat plane
+        # Calculate tactile point spacing for long and short axes
+        long_axis_spacing = (elastomer_dims[long_axis] - margin * 2.) / (num_divs[0] + 1)
+        short_axis_spacing = (elastomer_dims[short_axis] - margin * 2.) / (num_divs[1] + 1)
+
+        # Generate tactile points on the flat plane
         planar_grid_points = []
-        center = (mesh.bounds[0] + mesh.bounds[1]) / 2.
-        idx = 0
+        center = (mesh.bounds[0] + mesh.bounds[1]) / 2.  # Center of the elastomer
         for axis_i in range(3):
             if axis_i == slim_axis:
                 # On the slim axis, place a point far away so ray is pointing at the elastomer tip
                 planar_grid_points.append([np.sign(elastomer_to_tip_link_pos[0][slim_axis].item())])
-            else:
-                axis_grid_points = np.linspace(center[axis_i] - tactile_points_dx * (num_divs[idx] + 1.) / 2., center[axis_i] + tactile_points_dx * (num_divs[idx] + 1.) / 2., num_divs[idx] + 2)
-                planar_grid_points.append(axis_grid_points[1:-1])  # leave out the extreme corners
-                idx += 1
+            elif axis_i == long_axis:
+                # Generate points along the long axis
+                axis_grid_points = np.linspace(center[axis_i] - long_axis_spacing * (num_divs[0] + 1) / 2.,
+                                            center[axis_i] + long_axis_spacing * (num_divs[0] + 1) / 2.,
+                                            num_divs[0] + 2)
+                planar_grid_points.append(axis_grid_points[1:-1])  # Leave out the extreme corners
+            elif axis_i == short_axis:
+                # Generate points along the short axis
+                axis_grid_points = np.linspace(center[axis_i] - short_axis_spacing * (num_divs[1] + 1) / 2.,
+                                            center[axis_i] + short_axis_spacing * (num_divs[1] + 1) / 2.,
+                                            num_divs[1] + 2)
+                planar_grid_points.append(axis_grid_points[1:-1])  # Leave out the extreme corners
 
+        # Create grid corners
         grid_corners = itertools.product(planar_grid_points[0], planar_grid_points[1], planar_grid_points[2])
         grid_corners = np.array(list(grid_corners))
 
-        # project ray in positive y direction on the mesh # NOTE [Jie]: number of points is wrong when num_divs = 40
+        # Project ray in positive y direction on the mesh
         mesh_data = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
         ray_dir = np.array([0, 0, 0])
-        ray_dir[slim_axis] = -np.sign(elastomer_to_tip_link_pos[0][slim_axis].item())   # ray point towards elastomer
+        ray_dir[slim_axis] = -np.sign(elastomer_to_tip_link_pos[0][slim_axis].item())  # Ray points towards elastomer
         index_tri, index_ray, locations = mesh_data.intersects_id(grid_corners,
-                                                                  np.tile([ray_dir], (grid_corners.shape[0], 1)),
-                                                                  return_locations=True, multiple_hits=False)
+                                                                np.tile([ray_dir], (grid_corners.shape[0], 1)),
+                                                                return_locations=True, multiple_hits=False)
 
         if visualize:
             query_pointcloud = trimesh.PointCloud(locations, colors=(0., 0., 1.))
-
             trimesh.Scene([mesh, query_pointcloud]).show()
 
         if len(index_ray) != len(grid_corners):
@@ -496,10 +505,82 @@ class TactileFieldSensor(TactileBase):
 
         tactile_points = locations[index_ray.argsort()]
         tactile_points_pos_tensor = torch.tensor(tactile_points, dtype=torch.float32, device=self.device)
-        rotation = (0, 0, -np.pi) # NOTE [Jie]: assume tactile frame rotation are all the same
+        rotation = (0, 0, -np.pi)  # Assume tactile frame rotation is the same
         rotation = R.from_euler('xyz', rotation).as_quat()
         tactile_points_quat_tensor = torch.tensor(rotation, dtype=torch.float32, device=self.device).unsqueeze(0).repeat(len(tactile_points), 1)
         return tactile_points_pos_tensor, tactile_points_quat_tensor
+    # def generate_tactile_points(self, elastomer_parent_urdf_path, elastomer_link_name, elastomer_tip_link_name,
+    #                             elastomer_actor_name, num_divs=[20, 25], margin=0.0015, visualize=False):
+    #     """
+    #     Generate tactile points on the elastomer.
+
+    #     Args:
+    #         elastomer_parent_urdf_path (str): Path to the elastomer parent URDF.
+    #         elastomer_link_name (str): Name of the elastomer link.
+    #         elastomer_tip_link_name (str): Name of the elastomer tip link.
+    #         elastomer_actor_name (str): Name of the elastomer actor.
+    #         num_divs (list): Number of divisions for the tactile points.
+    #         margin (float): Margin for the tactile points.
+    #         visualize (bool): Whether to visualize the points.
+
+    #     Returns:
+    #         tuple: Tactile points positions and quaternions.
+    #     """
+    #     robot = URDF.load(elastomer_parent_urdf_path)
+    #     mesh = robot.link_map[elastomer_link_name].visuals[0].geometry.mesh.meshes[0]
+
+    #     # generate grid on elastomer
+    #     elastomer_dims = np.diff(mesh.bounds, axis=0).squeeze()
+    #     slim_axis = np.argmin(elastomer_dims)   # determine flat axis of elastomer
+    #     _, elastomer_to_tip_link_pos = self.get_elastomer_to_tip_transform(
+    #         actor_name=elastomer_actor_name,
+    #         elastomer_link_name=elastomer_link_name,
+    #         elastomer_tip_link_name=elastomer_tip_link_name)
+
+    #     # determine gap between adjacent tactile points
+    #     axis_idxs = list(range(3))
+    #     axis_idxs.remove(slim_axis)     # remove slim idx
+    #     div_sz = (elastomer_dims[axis_idxs] - margin * 2.) / (np.array(num_divs) + 1)
+    #     tactile_points_dx = min(div_sz)
+
+    #     # sample points on the flat plane
+    #     planar_grid_points = []
+    #     center = (mesh.bounds[0] + mesh.bounds[1]) / 2.
+    #     idx = 0
+    #     for axis_i in range(3):
+    #         if axis_i == slim_axis:
+    #             # On the slim axis, place a point far away so ray is pointing at the elastomer tip
+    #             planar_grid_points.append([np.sign(elastomer_to_tip_link_pos[0][slim_axis].item())])
+    #         else:
+    #             axis_grid_points = np.linspace(center[axis_i] - tactile_points_dx * (num_divs[idx] + 1.) / 2., center[axis_i] + tactile_points_dx * (num_divs[idx] + 1.) / 2., num_divs[idx] + 2)
+    #             planar_grid_points.append(axis_grid_points[1:-1])  # leave out the extreme corners
+    #             idx += 1
+
+    #     grid_corners = itertools.product(planar_grid_points[0], planar_grid_points[1], planar_grid_points[2])
+    #     grid_corners = np.array(list(grid_corners))
+
+    #     # project ray in positive y direction on the mesh # NOTE [Jie]: number of points is wrong when num_divs = 40
+    #     mesh_data = trimesh.ray.ray_triangle.RayMeshIntersector(mesh)
+    #     ray_dir = np.array([0, 0, 0])
+    #     ray_dir[slim_axis] = -np.sign(elastomer_to_tip_link_pos[0][slim_axis].item())   # ray point towards elastomer
+    #     index_tri, index_ray, locations = mesh_data.intersects_id(grid_corners,
+    #                                                               np.tile([ray_dir], (grid_corners.shape[0], 1)),
+    #                                                               return_locations=True, multiple_hits=False)
+
+    #     if visualize:
+    #         query_pointcloud = trimesh.PointCloud(locations, colors=(0., 0., 1.))
+
+    #         trimesh.Scene([mesh, query_pointcloud]).show()
+
+    #     if len(index_ray) != len(grid_corners):
+    #         raise ValueError("Fewer number of tactile points")
+
+    #     tactile_points = locations[index_ray.argsort()]
+    #     tactile_points_pos_tensor = torch.tensor(tactile_points, dtype=torch.float32, device=self.device)
+    #     rotation = (0, 0, -np.pi) # NOTE [Jie]: assume tactile frame rotation are all the same
+    #     rotation = R.from_euler('xyz', rotation).as_quat()
+    #     tactile_points_quat_tensor = torch.tensor(rotation, dtype=torch.float32, device=self.device).unsqueeze(0).repeat(len(tactile_points), 1)
+    #     return tactile_points_pos_tensor, tactile_points_quat_tensor
 
     def get_tactile_points_in_world(self, tactile_points_pos_local, tactile_points_quat_local, elastomer_link_id):
         """

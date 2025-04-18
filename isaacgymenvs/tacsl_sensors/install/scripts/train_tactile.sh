@@ -5,8 +5,8 @@ cd $( dirname ${BASH_SOURCE[0]} )/../../../
 
 python train.py \
     'task=TacSLTaskInsertion' 'task.env.task_type=insertion' \
-    'seed=-1' 'task.env.use_gelsight=True' 'headless=True' \
-    'max_iterations=1500' 'task.env.numEnvs=64' \
+    'seed=-1' 'task.env.use_gelsight=True' 'headless=False' \
+    'max_iterations=1500' 'task.env.numEnvs=1' \
     'task.randomize.plug_noise_rot_in_gripper=[0.0, 0.628318, 0.0]' \
     'train=TacSLTaskInsertionPPO_LSTM_dict_AAC' 'train.params.config.horizon_length=512' \
     'train.params.config.mini_epochs=4' \
